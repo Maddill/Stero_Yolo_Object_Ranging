@@ -115,9 +115,9 @@ class NearestNeighborDistanceMetric(object):
                 "Invalid metric; must be either 'euclidean' or 'cosine'")
         self.matching_threshold = matching_threshold
         self.budget = budget
-        self.samples = {0: {}, 1: {}}
+        self.samples = {}
 
-    def partial_fit(self, features, targets, active_targets, source_id):
+    def partial_fit(self, features, targets, active_targets):
         """Update the distance metric with new data.
         Parameters
         ----------
@@ -129,12 +129,12 @@ class NearestNeighborDistanceMetric(object):
             A list of targets that are currently present in the scene.
         """
         for feature, target in zip(features, targets):
-            self.samples[source_id].setdefault(target, []).append(feature)
+            self.samples.setdefault(target, []).append(feature)
             if self.budget is not None:
-                self.samples[source_id][target] = self.samples[source_id][target][-self.budget:]
-        self.samples[source_id] = {k: self.samples[source_id][k] for k in active_targets}
+                self.samples[target] = self.samples[target][-self.budget:]
+        self.samples = {k: self.samples[k] for k in active_targets}
 
-    def distance(self, features, targets, source_id):
+    def distance(self, features, targets):
         """Compute distance between features and targets.
         Parameters
         ----------
@@ -151,5 +151,5 @@ class NearestNeighborDistanceMetric(object):
         """
         cost_matrix = np.zeros((len(targets), len(features)))
         for i, target in enumerate(targets):
-            cost_matrix[i, :] = self._metric(self.samples[source_id][target], features)
+            cost_matrix[i, :] = self._metric(self.samples[target], features)
         return cost_matrix

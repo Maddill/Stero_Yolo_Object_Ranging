@@ -43,23 +43,23 @@ class Tracker:
         self._lambda = _lambda
 
         self.kf = kalman_filter.KalmanFilter()
-        self.tracks = {0: [], 1: []}
-        self._next_id = {0: 1, 1: 1}
+        self.tracks = []
+        self._next_id = 1
 
-    def predict(self, source_id):
+    def predict(self):
         """Propagate track state distributions one time step forward.
 
         This function should be called once every time step, before `update`.
         """
-        for track in self.tracks[source_id]:
+        for track in self.tracks:
             track.predict(self.kf)
 
-    def increment_ages(self, source_id):
-        for track in self.tracks[source_id]:
+    def increment_ages(self):
+        for track in self.tracks:
             track.increment_age()
             track.mark_missed()
 
-    def update(self, detections, classes, source_id):
+    def update(self, detections, classes):
         """Perform measurement update and track management.
 
         Parameters
@@ -70,31 +70,30 @@ class Tracker:
         """
         # Run matching cascade.
         matches, unmatched_tracks, unmatched_detections = \
-            self._match(detections, source_id)
+            self._match(detections)
 
         # Update track set.
         for track_idx, detection_idx in matches:
-            self.tracks[source_id][track_idx].update(
+            self.tracks[track_idx].update(
                 self.kf, detections[detection_idx], classes[detection_idx])
         for track_idx in unmatched_tracks:
-            self.tracks[source_id][track_idx].mark_missed()
+            self.tracks[track_idx].mark_missed()
         for detection_idx in unmatched_detections:
-            if detection_idx > self._next_id[source_id]:
-                self._initiate_track(detections[detection_idx], classes[detection_idx].item(), source_id)
-        self.tracks[source_id] = [t for t in self.tracks[source_id] if not t.is_deleted()]
+            self._initiate_track(detections[detection_idx], classes[detection_idx].item())
+        self.tracks = [t for t in self.tracks if not t.is_deleted()]
 
         # Update distance metric.
-        active_targets = [t.track_id for t in self.tracks[source_id] if t.is_confirmed()]
+        active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
         features, targets = [], []
-        for track in self.tracks[source_id]:
+        for track in self.tracks:
             if not track.is_confirmed():
                 continue
             features += track.features
             targets += [track.track_id for _ in track.features]
             track.features = []
-        self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets, source_id)
+        self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets)
 
-    def _full_cost_metric(self, tracks, dets, track_indices, detection_indices, source_id):
+    def _full_cost_metric(self, tracks, dets, track_indices, detection_indices):
         """
         This implements the full lambda-based cost-metric. However, in doing so, it disregards
         the possibility to gate the position only which is provided by
@@ -120,7 +119,6 @@ class Tracker:
         app_cost = self.metric.distance(
             np.array([dets[i].feature for i in detection_indices]),
             np.array([tracks[i].track_id for i in track_indices]),
-            source_id
         )
         app_gate = app_cost > self.metric.matching_threshold
         # Now combine and threshold
@@ -129,46 +127,44 @@ class Tracker:
         # Return Matrix
         return cost_matrix
 
-    def _match(self, detections, source_id):
+    def _match(self, detections):
         # Split track set into confirmed and unconfirmed tracks.
-        confirmed_tracks = [i for i, t in enumerate(self.tracks[source_id]) if t.is_confirmed()]
-        unconfirmed_tracks = [i for i, t in enumerate(self.tracks[source_id]) if not t.is_confirmed()]
+        confirmed_tracks = [i for i, t in enumerate(self.tracks) if t.is_confirmed()]
+        unconfirmed_tracks = [i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
 
         # Associate confirmed tracks using appearance features.
         matches_a, unmatched_tracks_a, unmatched_detections = linear_assignment.matching_cascade(
             self._full_cost_metric,
             linear_assignment.INFTY_COST - 1,  # no need for self.metric.matching_threshold here,
             self.max_age,
-            self.tracks[source_id],
+            self.tracks,
             detections,
             confirmed_tracks,
-            source_id=source_id
         )
 
         # Associate remaining tracks together with unconfirmed tracks using IOU.
         iou_track_candidates = unconfirmed_tracks + [
-            k for k in unmatched_tracks_a if self.tracks[source_id][k].time_since_update == 1
+            k for k in unmatched_tracks_a if self.tracks[k].time_since_update == 1
         ]
         unmatched_tracks_a = [
-            k for k in unmatched_tracks_a if self.tracks[source_id][k].time_since_update != 1
+            k for k in unmatched_tracks_a if self.tracks[k].time_since_update != 1
         ]
         matches_b, unmatched_tracks_b, unmatched_detections = linear_assignment.min_cost_matching(
             iou_matching.iou_cost,
             self.max_iou_distance,
-            self.tracks[source_id],
+            self.tracks,
             detections,
             iou_track_candidates,
             unmatched_detections,
-            source_id
         )
 
         matches = matches_a + matches_b
         unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
         return matches, unmatched_tracks, unmatched_detections
 
-    def _initiate_track(self, detection, class_id, source_id):
+    def _initiate_track(self, detection, class_id):
         mean, covariance = self.kf.initiate(detection.to_xyah())
-        self.tracks[source_id].append(Track(
-            mean, covariance, self._next_id[source_id], class_id, self.n_init, self.max_age,
+        self.tracks.append(Track(
+            mean, covariance, self._next_id, class_id, self.n_init, self.max_age,
             detection.feature))
-        self._next_id[source_id] += 1
+        self._next_id += 1

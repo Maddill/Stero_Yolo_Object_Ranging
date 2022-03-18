@@ -21,7 +21,7 @@ class DeepSort(object):
         self.tracker = Tracker(
             metric, max_iou_distance=max_iou_distance, max_age=max_age, n_init=n_init)
 
-    def update(self, bbox_xywh, confidences, classes, ori_img, source_id, use_yolo_preds=True):
+    def update(self, bbox_xywh, confidences, classes, ori_img, use_yolo_preds=True):
         self.height, self.width = ori_img.shape[:2]
         # generate detections
         features = self._get_features(bbox_xywh, ori_img)
@@ -33,14 +33,13 @@ class DeepSort(object):
         boxes = np.array([d.tlwh for d in detections])
         scores = np.array([d.confidence for d in detections])
 
-        # if source_id == 0:
         # update tracker
-        self.tracker.predict(source_id)
-        self.tracker.update(detections, classes, source_id)
+        self.tracker.predict()
+        self.tracker.update(detections, classes)
 
         # output bbox identities
         outputs = []
-        for track in self.tracker.tracks[source_id]:
+        for track in self.tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue
             if use_yolo_preds:
@@ -92,8 +91,8 @@ class DeepSort(object):
         y2 = min(int(y+h), self.height - 1)
         return x1, y1, x2, y2
 
-    def increment_ages(self, source_id):
-        self.tracker.increment_ages(source_id)
+    def increment_ages(self):
+        self.tracker.increment_ages()
 
     def _xyxy_to_tlwh(self, bbox_xyxy):
         x1, y1, x2, y2 = bbox_xyxy

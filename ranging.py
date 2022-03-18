@@ -31,6 +31,7 @@ from yolov5.utils.torch_utils import select_device, time_sync
 from yolov5.utils.plots import Annotator, colors
 from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
+import calibration
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 deepsort root directory
@@ -252,8 +253,10 @@ def detect(opt):
                         center_points[i] = frame_center_points
 
                         if (i == 1 and center_points.get(0) and center_points[0].get(id) and center_points[1].get(id)):
+                            frame_right, frame_left = frames[0], frames[1]
+                            frame_right, frame_left = calibration.undistortRectify(frame_right, frame_left)
                             depths[id] = tri.find_depth(
-                                center_points[0][id], center_points[1][id], frames[0], frames[1], B, focal, alpha)
+                                center_points[0][id], center_points[1][id], frame_right, frame_left, B, focal, alpha)
                             print("TEST", center_points, depths, depths[id])
 
                         c = int(cls)  # integer class
@@ -281,7 +284,7 @@ def detect(opt):
                     f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)')
 
             else:
-                deepsort1.increment_ages(i)
+                deepsort1.increment_ages()
                 # if i == 0:
                 #     deepsort1.increment_ages()
                 # else:
