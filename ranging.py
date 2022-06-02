@@ -262,7 +262,7 @@ def detect(opt):
                         c = int(cls)  # integer class
 
                         if i == 1 and depths.get(id):
-                            label = f'{id} {names[c]} {depths[id]:.2f} cm'
+                            label = f'{id} {names[c]} {depths[id]:.2f} meters'
                         else:
                             label = f'{id} {names[c]}'  
                             
@@ -328,7 +328,7 @@ def detect(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--yolo_model', nargs='+', type=str,
-                        default='yolov5m.pt', help='model.pt path(s)')
+                        default='best.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
     parser.add_argument('--source1', type=str, default='1',
                         help='source')  # file/folder, 0 for webcam
